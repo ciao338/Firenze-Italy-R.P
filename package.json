@@ -1,0 +1,14 @@
+{
+  "name": "firenze-italy-rp",
+  "version": "1.0.0",
+  "description": "Bot per RP su Discord",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.0"
+  },
+  "author": "",
+  "license": "ISC"
+}
