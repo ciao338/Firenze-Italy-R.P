@@ -17,16 +17,13 @@ const client = new Client({
 });
 
 // ==========================================
-// ⚙️ CONFIGURAZIONE ID E VARIABILI (INSERISCI I TUOI ID QUI)
+// ⚙️ CONFIGURAZIONE ID (TUTTI CONFIGURATI)
 // ==========================================
-const ROLE_VOTAZIONE_PERM = '1513989681522413638'; // Chi può usare il comando /votazione
+const ROLE_VOTAZIONE_PERM = '1513989681522413638'; // Chi può usare /votazione
 const CH_SERVER_STATUS    = '1521861880883445842'; // Canale Server Status (ON/OFF)
 const CH_STAFF_CHAT       = '1521861903436218408'; // Canale chat/log staff
-
-// 👇 INSERISCI I TRE ID MANCANTI QUI SOTTO 👇
-const ROLE_AMMINISTRATORE = 'INSERISCI_ID_RUOLO_AMMINISTRATORE'; // Ruolo che può cliccare il tasto blu di prova
-const ROLE_STAFF_PING     = 'INSERISCI_ID_RUOLO_STAFF_DA_PINGARE'; // Ruolo staff che viene taggato al raggiungimento dei voti
-const SERVER_ID           = 'INSERISCI_ID_DEL_TUO_SERVER';         // ID del tuo server Discord
+const ROLE_AMMINISTRATORE = '1521868096867012728'; // 🌟 Il tuo ID Amministratore per il tasto blu
+const ROLE_STAFF_PING     = '1521868096867012728'; // Ruolo da taggare al raggiungimento dei 6 voti (impostato uguale ad Admin)
 
 // Variabili globali di stato
 let voteData = {
@@ -38,7 +35,7 @@ let voteData = {
 };
 
 // ==========================================
-// 🚀 AVVIO E REGISTRAZIONE SLASH COMMANDS
+// 🚀 AVVIO E REGISTRAZIONE COMANDI GLOBALI
 // ==========================================
 client.once('ready', async () => {
     console.log(`| 🟢 Bot Firenze RP Online come ${client.user.tag}`);
@@ -52,9 +49,9 @@ client.once('ready', async () => {
     ];
 
     try {
-        const serverFirenze = await client.guilds.fetch(SERVER_ID);
-        await serverFirenze.commands.set(commands);
-        console.log('| ✅ Comandi Slash caricati ISTANTANEAMENTE nel server!');
+        // Registrazione globale automatica (Funziona ovunque senza bisogno dell'ID Server)
+        await client.application.commands.set(commands);
+        console.log('| ✅ Comandi Slash caricati globalmente con successo!');
     } catch (error) {
         console.error('| ❌ Errore caricamento comandi Slash:', error);
     }
@@ -118,7 +115,7 @@ client.on('interactionCreate', async (interaction) => {
                 components: [row] 
             });
 
-            // Gestione Scadenza dei 20 minuti
+            // Timer 20 minuti (Scadenza -> SSD)
             voteData.timeoutId = setTimeout(async () => {
                 if (!voteData.triggered && voteData.active) {
                     voteData.active = false;
@@ -151,7 +148,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // ------------------------------------------
-    // 2. GESTIONE CLICK SUI BOTTONI
+    // 2. GESTIONE SUI BOTTONI
     // ------------------------------------------
     if (interaction.isButton()) {
         if (!voteData.active) {
@@ -160,7 +157,7 @@ client.on('interactionCreate', async (interaction) => {
 
         const userId = interaction.user.id;
 
-        // BOTTONE VERDE (UTENTI REGOLARI - 1 VOTO A TESTA)
+        // BOTTONE VERDE (UTENTI REGOLARI - 1 VOTO)
         if (interaction.customId === 'btn_vota') {
             if (voteData.voters.has(userId)) {
                 voteData.voters.delete(userId);
@@ -171,19 +168,18 @@ client.on('interactionCreate', async (interaction) => {
             }
         } 
         
-        // BOTTONE BLU (SOLO RUOLO AMMINISTRATORE - VOTI INFINITI PER TEST)
+        // BOTTONE BLU (PROVA - SOLO PER IL TUO ID AMMINISTRATORE)
         else if (interaction.customId === 'btn_prova') {
             if (!interaction.member.roles.cache.has(ROLE_AMMINISTRATORE)) {
                 return interaction.reply({ 
-                    content: '❌ Solo gli Amministratori autorizzati possono premere questo tasto di prova.', 
+                    content: '❌ Solo gli Amministratori autorizzati possono usare questo tasto.', 
                     ephemeral: true 
                 });
             }
-            // Incrementa direttamente senza vincoli di ID utente
-            voteData.count++;
+            voteData.count++; // Aggiunge voti infiniti per i tuoi test
         }
 
-        // Aggiornamento grafico in tempo reale dei voti sul canale
+        // Aggiorna l'Embed con i nuovi voti
         const oldEmbed = interaction.message.embeds[0];
         const updatedEmbed = EmbedBuilder.from(oldEmbed)
             .spliceFields(0, 1, { name: 'Voti Attuali', value: `\`\`\`${voteData.count}/6\`\`\``, inline: false });
@@ -191,17 +187,17 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.update({ embeds: [updatedEmbed] });
 
         // ------------------------------------------
-        // 3. RAGGIUNGIMENTO 6 VOTI (START PROCEDURE)
+        // 3. SE INVECE RAGGIUNGE I 6 VOTI (PROVA O REALI)
         // ------------------------------------------
         if (voteData.count >= 6 && !voteData.triggered) {
             voteData.triggered = true; 
             voteData.active = false; 
 
-            // Blocca i bottoni sul messaggio originale
+            // Disabilita i pulsanti
             const embedCompletata = EmbedBuilder.from(updatedEmbed)
                 .setTitle('⚖️ **VOTAZIONE FIRP** [COMPLETATA]')
                 .setColor('#00ff00')
-                .setDescription('I voti minimi sono stati raggiunti! Preparazione SSU in corso...');
+                .setDescription('I voti minimi sono stati raggiunti! Preparazione SSU...');
             
             const disabledRow = new ActionRowBuilder().addComponents(
                 ButtonBuilder.from(interaction.message.components[0].components[0]).setDisabled(true),
@@ -209,19 +205,19 @@ client.on('interactionCreate', async (interaction) => {
             );
             await interaction.message.edit({ embeds: [embedCompletata], components: [disabledRow] });
 
-            // Invia il log nel canale Staff taggando il ruolo Staff configurato
+            // Ping Canale Staff
             const staffChannel = client.channels.cache.get(CH_STAFF_CHAT);
             if (staffChannel) {
                 const embedStaff = new EmbedBuilder()
                     .setTitle('🚨 ALLERTA STAFF - SSU IN PREPARAZIONE')
-                    .setDescription(`La votazione ha raggiunto i voti necessari.\n\nRecatevi in gioco, la Server Start Up (SSU) inizierà tra esattamente **1 Minuto**.`)
+                    .setDescription(`La votazione ha raggiunto i 6 voti.\n\nEntrate in game, la SSU inizierà tra esattamente **1 Minuto**.`)
                     .setColor('#ffaa00')
                     .setTimestamp();
 
                 await staffChannel.send({ content: `<@&${ROLE_STAFF_PING}>`, embeds: [embedStaff] });
             }
 
-            // Attesa di 1 minuto (60.000 ms) prima di lanciare il SERVER ON
+            // Timer 1 minuto -> SERVER ON
             setTimeout(async () => {
                 const statusChannel = client.channels.cache.get(CH_SERVER_STATUS);
                 if (statusChannel) {
@@ -231,7 +227,7 @@ client.on('interactionCreate', async (interaction) => {
                         .setColor('#00ffaa')
                         .addFields(
                             { name: 'Stato', value: '🟢 `Online`', inline: true },
-                            { name: 'Connessione', value: 'Tramite F8 / Lista server', inline: true }
+                            { name: 'Connessione', value: 'Tramite F8', inline: true }
                         )
                         .setTimestamp();
 
