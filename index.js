@@ -17,15 +17,18 @@ const client = new Client({
 });
 
 // ==========================================
-// ⚙️ CONFIGURAZIONE ID E VARIABILI
+// ⚙️ CONFIGURAZIONE ID E VARIABILI (INSERISCI I TUOI ID QUI)
 // ==========================================
-const ROLE_VOTAZIONE_PERM = '1513989681522413638'; // Chi può usare /votazione
+const ROLE_VOTAZIONE_PERM = '1513989681522413638'; // Chi può usare il comando /votazione
 const CH_SERVER_STATUS    = '1521861880883445842'; // Canale Server Status (ON/OFF)
-const CH_STAFF_CHAT       = '1521861903436218408'; // Canale log staff
-const ROLE_STAFF          = 'INSERISCI_QUI_ID_RUOLO_STAFF'; // Ruolo staff (per il tasto prova)
-const SERVER_ID           = 'INSERISCI_QUI_ID_DEL_TUO_SERVER'; // ID del Server per caricamento istantaneo
+const CH_STAFF_CHAT       = '1521861903436218408'; // Canale chat/log staff
 
-// Variabili globali per salvare lo stato della votazione
+// 👇 INSERISCI I TRE ID MANCANTI QUI SOTTO 👇
+const ROLE_AMMINISTRATORE = 'INSERISCI_ID_RUOLO_AMMINISTRATORE'; // Ruolo che può cliccare il tasto blu di prova
+const ROLE_STAFF_PING     = 'INSERISCI_ID_RUOLO_STAFF_DA_PINGARE'; // Ruolo staff che viene taggato al raggiungimento dei voti
+const SERVER_ID           = 'INSERISCI_ID_DEL_TUO_SERVER';         // ID del tuo server Discord
+
+// Variabili globali di stato
 let voteData = {
     active: false,
     count: 0,
@@ -83,9 +86,8 @@ client.on('interactionCreate', async (interaction) => {
                 timeoutId: null
             };
 
-            // Calcolo dei Timestamp per i timer dinamici di Discord
             const nowUnix = Math.floor(Date.now() / 1000);
-            const expireUnix = nowUnix + (20 * 60); // 20 minuti in secondi
+            const expireUnix = nowUnix + (20 * 60); 
 
             const embedVotazione = new EmbedBuilder()
                 .setTitle('⚖️ **VOTAZIONE FIRP**')
@@ -96,17 +98,16 @@ client.on('interactionCreate', async (interaction) => {
                 )
                 .setFooter({ text: 'Firenze RP - Sistema Votazioni', iconURL: interaction.guild.iconURL() });
 
-            // Creazione Bottoni (Utenti + Tasto Prova Staff)
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
                     .setCustomId('btn_vota')
                     .setLabel('Premi per votare')
-                    .setStyle(ButtonStyle.Success), // Verde, senza emoji
+                    .setStyle(ButtonStyle.Success),
                 
                 new ButtonBuilder()
                     .setCustomId('btn_prova')
                     .setLabel('Votazione Prova')
-                    .setStyle(ButtonStyle.Primary) // Blu
+                    .setStyle(ButtonStyle.Primary) // Tasto Blu
             );
 
             await interaction.reply({ content: '✅ Votazione generata con successo!', ephemeral: true });
@@ -117,9 +118,7 @@ client.on('interactionCreate', async (interaction) => {
                 components: [row] 
             });
 
-            // ------------------------------------------
-            // GESTIONE SCADENZA (TIMER A 0 = SSD)
-            // ------------------------------------------
+            // Gestione Scadenza dei 20 minuti
             voteData.timeoutId = setTimeout(async () => {
                 if (!voteData.triggered && voteData.active) {
                     voteData.active = false;
@@ -136,7 +135,6 @@ client.on('interactionCreate', async (interaction) => {
 
                     await voteMessage.edit({ embeds: [embedScaduta], components: [disabledRow] });
 
-                    // Annuncio SSD / Server OFF nel canale status
                     const statusChannel = client.channels.cache.get(CH_SERVER_STATUS);
                     if (statusChannel) {
                         const embedSsd = new EmbedBuilder()
@@ -148,7 +146,7 @@ client.on('interactionCreate', async (interaction) => {
                         await statusChannel.send({ embeds: [embedSsd] });
                     }
                 }
-            }, 1200000); // 20 minuti
+            }, 1200000); 
         }
     }
 
@@ -162,7 +160,7 @@ client.on('interactionCreate', async (interaction) => {
 
         const userId = interaction.user.id;
 
-        // BOTTONE NORMALE
+        // BOTTONE VERDE (UTENTI REGOLARI - 1 VOTO A TESTA)
         if (interaction.customId === 'btn_vota') {
             if (voteData.voters.has(userId)) {
                 voteData.voters.delete(userId);
@@ -173,16 +171,19 @@ client.on('interactionCreate', async (interaction) => {
             }
         } 
         
-        // BOTTONE BLU DI PROVA (SOLO STAFF)
+        // BOTTONE BLU (SOLO RUOLO AMMINISTRATORE - VOTI INFINITI PER TEST)
         else if (interaction.customId === 'btn_prova') {
-            if (!interaction.member.roles.cache.has(ROLE_STAFF)) {
-                return interaction.reply({ content: '❌ Solo lo Staff può usare il tasto di prova.', ephemeral: true });
+            if (!interaction.member.roles.cache.has(ROLE_AMMINISTRATORE)) {
+                return interaction.reply({ 
+                    content: '❌ Solo gli Amministratori autorizzati possono premere questo tasto di prova.', 
+                    ephemeral: true 
+                });
             }
-            // Aggiunge un voto senza registrare l'utente, così lo staff può cliccarlo più volte
+            // Incrementa direttamente senza vincoli di ID utente
             voteData.count++;
         }
 
-        // Aggiornamento grafico del messaggio
+        // Aggiornamento grafico in tempo reale dei voti sul canale
         const oldEmbed = interaction.message.embeds[0];
         const updatedEmbed = EmbedBuilder.from(oldEmbed)
             .spliceFields(0, 1, { name: 'Voti Attuali', value: `\`\`\`${voteData.count}/6\`\`\``, inline: false });
@@ -190,17 +191,17 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.update({ embeds: [updatedEmbed] });
 
         // ------------------------------------------
-        // 3. RAGGIUNGIMENTO SOGLIA (6 VOTI) - SERVER ON
+        // 3. RAGGIUNGIMENTO 6 VOTI (START PROCEDURE)
         // ------------------------------------------
         if (voteData.count >= 6 && !voteData.triggered) {
             voteData.triggered = true; 
             voteData.active = false; 
 
-            // Disabilita bottoni
+            // Blocca i bottoni sul messaggio originale
             const embedCompletata = EmbedBuilder.from(updatedEmbed)
                 .setTitle('⚖️ **VOTAZIONE FIRP** [COMPLETATA]')
                 .setColor('#00ff00')
-                .setDescription('I voti minimi sono stati raggiunti! Preparazione in corso...');
+                .setDescription('I voti minimi sono stati raggiunti! Preparazione SSU in corso...');
             
             const disabledRow = new ActionRowBuilder().addComponents(
                 ButtonBuilder.from(interaction.message.components[0].components[0]).setDisabled(true),
@@ -208,35 +209,35 @@ client.on('interactionCreate', async (interaction) => {
             );
             await interaction.message.edit({ embeds: [embedCompletata], components: [disabledRow] });
 
-            // Avviso Chat Staff
+            // Invia il log nel canale Staff taggando il ruolo Staff configurato
             const staffChannel = client.channels.cache.get(CH_STAFF_CHAT);
             if (staffChannel) {
                 const embedStaff = new EmbedBuilder()
                     .setTitle('🚨 ALLERTA STAFF - SSU IN PREPARAZIONE')
-                    .setDescription(`La votazione ha raggiunto i 6 voti.\nRecatevi immediatamente in gioco, la Server Start Up avverrà tra **1 Minuto**.`)
+                    .setDescription(`La votazione ha raggiunto i voti necessari.\n\nRecatevi in gioco, la Server Start Up (SSU) inizierà tra esattamente **1 Minuto**.`)
                     .setColor('#ffaa00')
                     .setTimestamp();
 
-                await staffChannel.send({ content: `<@&${ROLE_STAFF}>`, embeds: [embedStaff] });
+                await staffChannel.send({ content: `<@&${ROLE_STAFF_PING}>`, embeds: [embedStaff] });
             }
 
-            // Attesa di 1 minuto per mandare SERVER ON
+            // Attesa di 1 minuto (60.000 ms) prima di lanciare il SERVER ON
             setTimeout(async () => {
                 const statusChannel = client.channels.cache.get(CH_SERVER_STATUS);
                 if (statusChannel) {
                     const embedServerOn = new EmbedBuilder()
                         .setTitle('🌐 **SERVER STATUS: ONLINE**')
-                        .setDescription('Il server è ora ufficialmente **ONLINE** e pronto per l\'RP!\n\nAvviate FiveM e connettetevi ora.')
+                        .setDescription('Il server è ora ufficialmente **ONLINE** e pronto per l\'RP!\n\nAvviate FiveM e connettetevi subito. Buon divertimento!')
                         .setColor('#00ffaa')
                         .addFields(
                             { name: 'Stato', value: '🟢 `Online`', inline: true },
-                            { name: 'Connessione', value: 'Tramite F8', inline: true }
+                            { name: 'Connessione', value: 'Tramite F8 / Lista server', inline: true }
                         )
                         .setTimestamp();
 
                     await statusChannel.send({ content: '@everyone', embeds: [embedServerOn] });
                 }
-            }, 60000); // 1 minuto
+            }, 60000); 
         }
     }
 });
