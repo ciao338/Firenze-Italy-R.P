@@ -1,14 +1,12 @@
 /**
  * ===================================================================================
- * FIRENZE RP - SISTEMA GESTIONE ERLC (Professional Edition - 250+ Lines)
- * Versione: 10.0.0
+ * FIRENZE RP - SISTEMA GESTIONE ERLC (Versione Enterprise)
  * 
- * FUNZIONALITÀ INTEGRATE:
- * - Sistema Votazioni Dinamico con Embed interattivi
- * - Logging Audit in canale Staff con tracciamento completo
- * - Sistema SSU: Ping automatico agli staff + Ping Votanti (Unique)
- * - Sistema SSD: Gestione chiusura server con tasto rapido
- * - Gestione Errori robusta (UncaughtException & UnhandledRejection)
+ * NOTE DI SVILUPPO:
+ * 1. Sistema di Toggle (Voto/Annulla) incluso.
+ * 2. Gestione Admin per Voti Prova illimitati.
+ * 3. Pulizia automatica dei messaggi su SSD e SSU.
+ * 4. Struttura modulare per permettere espansioni infinite.
  * ===================================================================================
  */
 
@@ -26,13 +24,11 @@ const client = new Client({
     ]
 });
 
-// --- 1. CONFIGURAZIONE ID E VARIABILI ---
-// Sostituisci questi ID con quelli effettivi del tuo server
+// --- CONFIGURAZIONE COSTANTI ---
 const CONFIG = {
     ROLES: { 
         VOTE: '1513989681522413638', 
-        ADMIN: '1521868096867012728',
-        STAFF_PING: '1521868096867012728' 
+        ADMIN: '1521868096867012728' 
     },
     CHANNELS: { 
         STATUS: '1521861880883445842', 
@@ -40,191 +36,124 @@ const CONFIG = {
     },
     SETTINGS: { 
         GOAL: 6, 
-        SERVER_CODE: 'EDGEWATER',
-        SSU_DELAY: 120000 // 2 minuti esatti
+        SERVER_CODE: 'EDGEWATER', 
+        SSU_DELAY: 120000 
     }
 };
 
-/**
- * SessionData: Mantiene lo stato corrente della votazione in memoria.
- * Utilizziamo un Set per i votantiUnique per garantire l'univocità dei ping.
- */
-let sessionData = {
+// --- GESTORE SESSIONI (Dati in memoria) ---
+let session = {
     active: false,
     count: 0,
-    voters: [],
-    votersUnique: new Set(),
-    triggered: false
+    voters: new Set(),
+    triggered: false,
+    message: null,
+    logChannel: null
 };
 
-// --- 2. MODULO LOGGING AVANZATO E AUDIT ---
-const Logger = {
-    log: (msg) => console.log(`[${new Date().toLocaleTimeString()}] [INFO] ${msg}`),
-    error: (msg) => console.error(`[${new Date().toLocaleTimeString()}] [ERROR] ${msg}`),
-    audit: (msg) => {
-        const ch = client.channels.cache.get(CONFIG.CHANNELS.STAFF);
-        if (ch) ch.send(`📋 **Audit Log:** ${msg}`);
+// --- MODULO EMBED FACTORY (Per una grafica più bella) ---
+const EmbedFactory = {
+    createVoto: (count) => {
+        return new EmbedBuilder()
+            .setTitle('🚓 **VOTAZIONE UFFICIALE FIRP**')
+            .setDescription('Il comando di Firenze RP sta aprendo la città. Premi il tasto verde per votare.')
+            .addFields(
+                { name: '📊 Stato', value: `${count} / ${CONFIG.SETTINGS.GOAL} Voti`, inline: true },
+                { name: '⚡ Modalità', value: 'Toggle (Click per annullare)', inline: true }
+            )
+            .setColor('#2b2d31')
+            .setTimestamp();
+    },
+    createStatus: (pingList) => {
+        return new EmbedBuilder()
+            .setTitle('🌐 **SERVER ERLC: ONLINE**')
+            .setDescription('La città è aperta. Seguite le direttive dello staff.')
+            .addFields({ name: 'Codice:', value: `\`${CONFIG.SETTINGS.SERVER_CODE}\``, inline: true })
+            .setColor('#00ffaa');
     }
 };
 
-// --- 3. EVENTO READY E REGISTRAZIONE COMANDI ---
+// --- EVENTO READY ---
 client.on(Events.ClientReady, async () => {
-    Logger.log(`Bot Firenze RP Online - Versione 10.0.0`);
+    console.log(`[BOT] Firenze RP Online. Versione 10.0.0`);
     client.user.setActivity('Firenze RP | ERLC', { type: ActivityType.Watching });
-
-    const commands = [
-        { name: 'votazione', description: 'Avvia la votazione per la SSU' },
-        { name: 'sts', description: 'Chiudi immediatamente il server (SSD)' }
-    ];
-
-    try {
-        await client.application.commands.set(commands);
-        Logger.log('Comandi Slash globali registrati correttamente.');
-    } catch (err) { 
-        Logger.error(`Errore durante la registrazione dei comandi: ${err.message}`); 
-    }
 });
 
-// --- 4. GESTIONE INTERAZIONI (Main Engine) ---
+// --- ENGINE INTERAZIONI ---
 client.on(Events.InteractionCreate, async (interaction) => {
     
-    // --- GESTIONE COMANDI SLASH ---
+    // Slash Commands
     if (interaction.isChatInputCommand()) {
         if (interaction.commandName === 'votazione') {
-            if (!interaction.member.roles.cache.has(CONFIG.ROLES.VOTE)) 
-                return interaction.reply({ content: '❌ Accesso negato: non hai il ruolo richiesto.', ephemeral: true });
-
-            // Reset stato sessione
-            sessionData = { active: true, count: 0, voters: [], votersUnique: new Set(), triggered: false };
+            session = { active: true, count: 0, voters: new Set(), triggered: false, message: null };
             
-            const nowUnix = Math.floor(Date.now() / 1000);
-            
-            const embedVoto = new EmbedBuilder()
-                .setTitle('🚓 **VOTAZIONE UFFICIALE FIRP**')
-                .setDescription(`Premete il tasto verde per confermare la vostra presenza.\n\n🎯 **Obiettivo:** 6 Voti\n⏱️ **Iniziata:** <t:${nowUnix}:R>`)
-                .addFields({ name: '📊 Stato Attuale', value: `0 / 6 VOTI`, inline: false })
-                .setColor('#2b2d31')
-                .setFooter({ text: 'Firenze RP - Sistema Votazioni' });
-
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_vota').setLabel('Premi per votare').setEmoji('✋').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('btn_prova').setLabel('Votazione Prova').setStyle(ButtonStyle.Primary)
+                new ButtonBuilder().setCustomId('btn_vota').setLabel('Vota').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('btn_prova').setLabel('Prova').setStyle(ButtonStyle.Primary)
             );
 
-            await interaction.reply({ content: '@everyone 📢 **Nuova Votazione FIRP!**', embeds: [embedVoto], components: [row] });
-            Logger.audit(`Votazione avviata da ${interaction.user.tag}`);
-        }
-
-        // --- COMANDO STS (SSD) ---
-        if (interaction.commandName === 'sts') {
-            await interaction.reply({ 
-                embeds: [new EmbedBuilder()
-                    .setTitle('🔴 **SERVER STATUS: OFFLINE (SSD)**')
-                    .setDescription('Procedura di chiusura server attivata dallo staff. Il server è ora chiuso.')
-                    .setColor('#ff0000')
-                    .setTimestamp()] 
+            session.message = await interaction.reply({ 
+                embeds: [EmbedFactory.createVoto(0)], 
+                components: [row], 
+                fetchReply: true 
             });
-            Logger.audit(`SSD forzato da ${interaction.user.tag}`);
         }
     }
 
-    // --- GESTIONE BOTTONI E LOGICA AVANZATA ---
+    // Gestione Bottoni
     if (interaction.isButton()) {
-        if (!sessionData.active && interaction.customId !== 'btn_ssd') return;
-
-        // --- LOGICA VOTO STANDARD ---
+        // Tasto Verde (Voto Toggle)
         if (interaction.customId === 'btn_vota') {
-            sessionData.count++;
-            sessionData.voters.push(interaction.user.id);
-            sessionData.votersUnique.add(interaction.user.id);
-            
-            const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                .spliceFields(0, 1, { name: '📊 Stato Attuale', value: `${sessionData.count} / 6 VOTI`, inline: false });
-            
-            await interaction.update({ embeds: [newEmbed] });
-        }
-        
-        // --- LOGICA VOTO PROVA (ADMIN) ---
-        else if (interaction.customId === 'btn_prova') {
-            if (!interaction.member.roles.cache.has(CONFIG.ROLES.ADMIN)) return;
-            sessionData.count++;
-            sessionData.voters.push(interaction.user.id);
-            
-            const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                .spliceFields(0, 1, { name: '📊 Stato Attuale', value: `${sessionData.count} / 6 VOTI (Admin Forzato)`, inline: false });
-            
-            await interaction.update({ embeds: [newEmbed] });
-            Logger.audit(`Admin ${interaction.user.tag} ha forzato un voto.`);
-        }
-
-        // --- TRIGGER SSU (RAGGIUNGIMENTO 6 VOTI) ---
-        if (sessionData.count >= CONFIG.SETTINGS.GOAL && !sessionData.triggered) {
-            sessionData.triggered = true;
-            
-            // Ping Staff in chat staff
-            const staffChannel = client.channels.cache.get(CONFIG.CHANNELS.STAFF);
-            if (staffChannel) {
-                staffChannel.send(`<@&${CONFIG.ROLES.STAFF_PING}> 🚨 **Allerta SSU:** La votazione è stata completata. Sviluppo server tra 2 minuti.`);
+            if (session.voters.has(interaction.user.id)) {
+                session.voters.delete(interaction.user.id);
+                session.count--;
+            } else {
+                session.voters.add(interaction.user.id);
+                session.count++;
             }
+            await session.message.edit({ embeds: [EmbedFactory.createVoto(session.count)] });
+            await interaction.reply({ content: '✅ Voto aggiornato.', ephemeral: true });
+        }
 
-            await interaction.channel.send('@here 🎯 **Voti raggiunti! SSU in preparazione tra 2 minuti.**');
+        // Tasto Prova (Admin)
+        if (interaction.customId === 'btn_prova') {
+            if (!interaction.member.roles.cache.has(CONFIG.ROLES.ADMIN)) return;
+            session.count++;
+            await session.message.edit({ embeds: [EmbedFactory.createVoto(session.count)] });
+            await interaction.reply({ content: '🛠️ Voto prova aggiunto.', ephemeral: true });
+        }
 
-            // Timer preparazione SSU (2 minuti)
+        // SSD (Chiusura)
+        if (interaction.customId === 'btn_ssd') {
+            await interaction.message.delete().catch(() => {});
+            await interaction.reply({ content: '🔴 Server chiuso.', ephemeral: true });
+        }
+
+        // Trigger SSU
+        if (session.count >= CONFIG.SETTINGS.GOAL && !session.triggered) {
+            session.triggered = true;
+            if (session.message) session.message.delete().catch(() => {});
+            
             setTimeout(async () => {
-                const pingList = Array.from(sessionData.votersUnique).map(id => `<@${id}>`).join(' ');
-                
-                const embedOn = new EmbedBuilder()
-                    .setTitle('🌐 **SERVER ERLC: ONLINE**')
-                    .setDescription('La SSU è terminata. Il server di Firenze RP è aperto e accessibile.')
-                    .addFields(
-                        { name: 'Codice Server', value: `\`${CONFIG.SETTINGS.SERVER_CODE}\``, inline: true },
-                        { name: 'Stato', value: '🟢 ONLINE', inline: true }
-                    )
-                    .setColor('#00ffaa')
-                    .setTimestamp();
-                
+                const pingList = Array.from(session.voters).map(id => `<@${id}>`).join(' ');
                 const rowSsd = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('btn_ssd').setLabel('SSD (Chiudi Server)').setStyle(ButtonStyle.Danger)
+                    new ButtonBuilder().setCustomId('btn_ssd').setLabel('SSD (Chiudi)').setStyle(ButtonStyle.Danger)
                 );
-
-                const statusChannel = client.channels.cache.get(CONFIG.CHANNELS.STATUS);
-                if (statusChannel) {
-                    await statusChannel.send({ 
-                        content: `🔔 ${pingList} \nIl server è pronto. Entrate in RP!`, 
-                        embeds: [embedOn], 
-                        components: [rowSsd] 
-                    });
-                }
-                Logger.log('SSU attivata e notifiche inviate ai votanti.');
+                
+                await client.channels.cache.get(CONFIG.CHANNELS.STATUS).send({ 
+                    content: `🔔 ${pingList} \nServer aperto!`, 
+                    embeds: [EmbedFactory.createStatus()], 
+                    components: [rowSsd] 
+                });
             }, CONFIG.SETTINGS.SSU_DELAY);
         }
-
-        // --- LOGICA PULSANTE SSD (CHIUSURA) ---
-        if (interaction.customId === 'btn_ssd') {
-            await interaction.message.delete();
-            await interaction.reply({ content: '🔴 Server chiuso via SSD. Procedura completata.', ephemeral: true });
-            Logger.audit(`Server chiuso (SSD) tramite pulsante da ${interaction.user.tag}`);
-        }
     }
 });
 
-// --- 5. MODULO DI GESTIONE ERRORI E STABILITÀ ---
-process.on('uncaughtException', (err) => {
-    Logger.error(`Eccezione non gestita rilevata: ${err.message}`);
-});
+// --- ESPANSIONE FUTURA ---
+// Aggiungi qui le funzioni per la gestione dei log file:
+// fs.appendFileSync('logs.txt', 'Evento...');
+// Aggiungi qui le funzioni per database esterno.
+// Aggiungi qui le funzioni per moderazione.
 
-process.on('unhandledRejection', (reason, promise) => {
-    Logger.error(`Promessa rifiutata non gestita: ${reason}`);
-});
-
-// Avvio del bot
 client.login(process.env.TOKEN);
-
-/** 
- * NOTE TECNICHE PER LO SVILUPPO:
- * Il codice sopra è stato strutturato per garantire massima efficienza.
- * Per estendere ulteriormente la logica di business:
- * - Aggiungere file di configurazione separati.
- * - Implementare database esterni (MongoDB/SQL).
- * - Creare handlers separati per ogni evento.
- */
