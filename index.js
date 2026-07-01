@@ -17,13 +17,13 @@ const client = new Client({
 });
 
 // ==========================================
-// ⚙️ CONFIGURAZIONE ID (TUTTI CONFIGURATI)
+// ⚙️ CONFIGURAZIONE ID
 // ==========================================
 const ROLE_VOTAZIONE_PERM = '1513989681522413638'; // Chi può usare /votazione
 const CH_SERVER_STATUS    = '1521861880883445842'; // Canale Server Status (ON/OFF)
 const CH_STAFF_CHAT       = '1521861903436218408'; // Canale chat/log staff
-const ROLE_AMMINISTRATORE = '1521868096867012728'; // 🌟 Il tuo ID Amministratore per il tasto blu
-const ROLE_STAFF_PING     = '1521868096867012728'; // Ruolo da taggare al raggiungimento dei 6 voti (impostato uguale ad Admin)
+const ROLE_AMMINISTRATORE = '1521868096867012728'; // Tasto blu prova
+const ROLE_STAFF_PING     = '1521868096867012728'; // Ruolo staff da avvisare
 
 // Variabili globali di stato
 let voteData = {
@@ -39,17 +39,16 @@ let voteData = {
 // ==========================================
 client.once('ready', async () => {
     console.log(`| 🟢 Bot Firenze RP Online come ${client.user.tag}`);
-    client.user.setActivity('Centrale Firenze RP', { type: 3 });
+    client.user.setActivity('Roblox ERLC | Firenze RP', { type: 3 });
 
     const commands = [
         {
             name: 'votazione',
-            description: 'Avvia la votazione FIRP per aprire il server.',
+            description: 'Avvia la votazione FIRP per aprire il server ERLC.',
         }
     ];
 
     try {
-        // Registrazione globale automatica (Funziona ovunque senza bisogno dell'ID Server)
         await client.application.commands.set(commands);
         console.log('| ✅ Comandi Slash caricati globalmente con successo!');
     } catch (error) {
@@ -63,7 +62,7 @@ client.once('ready', async () => {
 client.on('interactionCreate', async (interaction) => {
     
     // ------------------------------------------
-    // 1. GESTIONE COMANDO SLASH: /votazione
+    // 1. COMANDO SLASH: /votazione
     // ------------------------------------------
     if (interaction.isChatInputCommand()) {
         if (interaction.commandName === 'votazione') {
@@ -87,43 +86,45 @@ client.on('interactionCreate', async (interaction) => {
             const expireUnix = nowUnix + (20 * 60); 
 
             const embedVotazione = new EmbedBuilder()
-                .setTitle('⚖️ **VOTAZIONE FIRP**')
-                .setDescription(`Votazione ufficiale per decidere l'entrata in RP.\n\n🎯 **Obiettivo:** 6 voti minimi\n▶️ **Attivata:** <t:${nowUnix}:R>\n⏱️ **Scadenza:** <t:${expireUnix}:R> (Tra 20 minuti)`)
+                .setTitle('🚓 **VOTAZIONE UFFICIALE FIRP** 🚑')
+                .setDescription(`Benvenuti alla votazione per l'apertura del server **Emergency Response: Liberty County**!\n\nPremi il tasto verde qui sotto per confermare la tua presenza. Se raggiungiamo la quota minima, lo Staff aprirà il server.\n\n🎯 **Obiettivo Minimo:** 6 Voti\n▶️ **Iniziata:** <t:${nowUnix}:R>\n⏱️ **Scadenza:** <t:${expireUnix}:R> (Tra 20 minuti)`)
                 .setColor('#2b2d31')
                 .addFields(
-                    { name: 'Voti Attuali', value: `\`\`\`0/6\`\`\``, inline: false }
+                    { name: '📊 Stato Attuale', value: `\`\`\`0 / 6 VOTI\`\`\``, inline: false }
                 )
-                .setFooter({ text: 'Firenze RP - Sistema Votazioni', iconURL: interaction.guild.iconURL() });
+                .setThumbnail('https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Roblox_logo.svg/1200px-Roblox_logo.svg.png') // Logo di default, cambialo con quello di FIRP se vuoi
+                .setFooter({ text: 'Firenze RP - Sistema Votazioni ERLC', iconURL: interaction.guild.iconURL() });
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
                     .setCustomId('btn_vota')
                     .setLabel('Premi per votare')
+                    .setEmoji('✋')
                     .setStyle(ButtonStyle.Success),
                 
                 new ButtonBuilder()
                     .setCustomId('btn_prova')
                     .setLabel('Votazione Prova')
-                    .setStyle(ButtonStyle.Primary) // Tasto Blu
+                    .setStyle(ButtonStyle.Primary) 
             );
 
-            await interaction.reply({ content: '✅ Votazione generata con successo!', ephemeral: true });
+            await interaction.reply({ content: '✅ Votazione per ERLC generata con successo!', ephemeral: true });
 
             const voteMessage = await interaction.channel.send({ 
-                content: '@everyone', 
+                content: '@everyone 📢 **Nuova Votazione FIRP!**', 
                 embeds: [embedVotazione], 
                 components: [row] 
             });
 
-            // Timer 20 minuti (Scadenza -> SSD)
+            // Timer Scadenza (SSD)
             voteData.timeoutId = setTimeout(async () => {
                 if (!voteData.triggered && voteData.active) {
                     voteData.active = false;
                     
                     const embedScaduta = EmbedBuilder.from(embedVotazione)
-                        .setTitle('⚖️ **VOTAZIONE FIRP** [SCADUTA]')
+                        .setTitle('🛑 **VOTAZIONE FIRP ANNULLATA**')
                         .setColor('#ff0000')
-                        .setDescription('La votazione è scaduta senza raggiungere i voti necessari.');
+                        .setDescription('La votazione è scaduta. Non abbiamo raggiunto abbastanza giocatori per avviare l\'RP.');
                     
                     const disabledRow = new ActionRowBuilder().addComponents(
                         ButtonBuilder.from(row.components[0]).setDisabled(true),
@@ -136,7 +137,7 @@ client.on('interactionCreate', async (interaction) => {
                     if (statusChannel) {
                         const embedSsd = new EmbedBuilder()
                             .setTitle('🔴 **SERVER STATUS: OFFLINE (SSD)**')
-                            .setDescription('La votazione è terminata senza successo.\nIl server rimarrà **OFFLINE** (SSD attiva).')
+                            .setDescription('Purtroppo la votazione non è andata a buon fine.\nIl server privato di **ERLC** rimarrà chiuso (SSD attiva).')
                             .setColor('#ff0000')
                             .setTimestamp();
                         
@@ -148,7 +149,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // ------------------------------------------
-    // 2. GESTIONE SUI BOTTONI
+    // 2. GESTIONE DEI VOTI SUI BOTTONI
     // ------------------------------------------
     if (interaction.isButton()) {
         if (!voteData.active) {
@@ -157,7 +158,6 @@ client.on('interactionCreate', async (interaction) => {
 
         const userId = interaction.user.id;
 
-        // BOTTONE VERDE (UTENTI REGOLARI - 1 VOTO)
         if (interaction.customId === 'btn_vota') {
             if (voteData.voters.has(userId)) {
                 voteData.voters.delete(userId);
@@ -167,37 +167,34 @@ client.on('interactionCreate', async (interaction) => {
                 voteData.count++;
             }
         } 
-        
-        // BOTTONE BLU (PROVA - SOLO PER IL TUO ID AMMINISTRATORE)
         else if (interaction.customId === 'btn_prova') {
             if (!interaction.member.roles.cache.has(ROLE_AMMINISTRATORE)) {
                 return interaction.reply({ 
-                    content: '❌ Solo gli Amministratori autorizzati possono usare questo tasto.', 
+                    content: '❌ Solo gli Amministratori possono forzare i voti.', 
                     ephemeral: true 
                 });
             }
-            voteData.count++; // Aggiunge voti infiniti per i tuoi test
+            voteData.count++; 
         }
 
-        // Aggiorna l'Embed con i nuovi voti
         const oldEmbed = interaction.message.embeds[0];
         const updatedEmbed = EmbedBuilder.from(oldEmbed)
-            .spliceFields(0, 1, { name: 'Voti Attuali', value: `\`\`\`${voteData.count}/6\`\`\``, inline: false });
+            .spliceFields(0, 1, { name: '📊 Stato Attuale', value: `\`\`\`${voteData.count} / 6 VOTI\`\`\``, inline: false });
 
         await interaction.update({ embeds: [updatedEmbed] });
 
         // ------------------------------------------
-        // 3. SE INVECE RAGGIUNGE I 6 VOTI (PROVA O REALI)
+        // 3. SUCCESSO VOTAZIONE E SSU
         // ------------------------------------------
         if (voteData.count >= 6 && !voteData.triggered) {
             voteData.triggered = true; 
             voteData.active = false; 
 
-            // Disabilita i pulsanti
+            // 1. Aggiorna il messaggio originale per disabilitare i bottoni
             const embedCompletata = EmbedBuilder.from(updatedEmbed)
-                .setTitle('⚖️ **VOTAZIONE FIRP** [COMPLETATA]')
+                .setTitle('✅ **VOTAZIONE FIRP COMPLETATA**')
                 .setColor('#00ff00')
-                .setDescription('I voti minimi sono stati raggiunti! Preparazione SSU...');
+                .setDescription('Abbiamo raggiunto il numero necessario di giocatori!\nLo Staff sta attualmente avviando il server privato e preparando la SSU.');
             
             const disabledRow = new ActionRowBuilder().addComponents(
                 ButtonBuilder.from(interaction.message.components[0].components[0]).setDisabled(true),
@@ -205,33 +202,47 @@ client.on('interactionCreate', async (interaction) => {
             );
             await interaction.message.edit({ embeds: [embedCompletata], components: [disabledRow] });
 
-            // Ping Canale Staff
+            // 2. Ping @here nel canale della votazione per avvisare tutti del traguardo
+            await interaction.channel.send({
+                content: '@here 🎉 **Voti raggiunti!** SSU in preparazione, tenetevi pronti su Roblox!'
+            });
+
+            // 3. Ping nel canale privato dello Staff
             const staffChannel = client.channels.cache.get(CH_STAFF_CHAT);
             if (staffChannel) {
                 const embedStaff = new EmbedBuilder()
-                    .setTitle('🚨 ALLERTA STAFF - SSU IN PREPARAZIONE')
-                    .setDescription(`La votazione ha raggiunto i 6 voti.\n\nEntrate in game, la SSU inizierà tra esattamente **1 Minuto**.`)
+                    .setTitle('🚨 ALLERTA STAFF - AVVIO SSU')
+                    .setDescription(`La votazione è andata a buon fine.\n\nEntrate su **ERLC**, prendete servizio e preparate le stazioni. La SSU pubblica inizierà tra esattamente **1 Minuto**.`)
                     .setColor('#ffaa00')
                     .setTimestamp();
 
                 await staffChannel.send({ content: `<@&${ROLE_STAFF_PING}>`, embeds: [embedStaff] });
             }
 
-            // Timer 1 minuto -> SERVER ON
+            // 4. Timer 1 minuto per Annuncio Server ON
             setTimeout(async () => {
                 const statusChannel = client.channels.cache.get(CH_SERVER_STATUS);
                 if (statusChannel) {
+                    
+                    // Crea il blocco di ping per tutti quelli che hanno votato
+                    const votersArray = Array.from(voteData.voters);
+                    let pingVoters = votersArray.length > 0 
+                        ? `🔔 ${votersArray.map(id => `<@${id}>`).join(' ')} \nIl server è pronto per voi! Entrate in RP!`
+                        : `🔔 **Il server è pronto! Entrate tutti in RP!**`;
+
                     const embedServerOn = new EmbedBuilder()
-                        .setTitle('🌐 **SERVER STATUS: ONLINE**')
-                        .setDescription('Il server è ora ufficialmente **ONLINE** e pronto per l\'RP!\n\nAvviate FiveM e connettetevi subito. Buon divertimento!')
+                        .setTitle('🌐 **SERVER ERLC: ONLINE**')
+                        .setDescription('La città di Firenze vi aspetta. Rispettate sempre il Fear RP, seguite le regole del server e buon divertimento a tutti!')
                         .setColor('#00ffaa')
                         .addFields(
-                            { name: 'Stato', value: '🟢 `Online`', inline: true },
-                            { name: 'Connessione', value: 'Tramite F8', inline: true }
+                            { name: 'Stato', value: '🟢 `Online e Aperto`', inline: true },
+                            { name: 'Piattaforma', value: 'Roblox - ERLC', inline: true },
+                            { name: 'Codice Server', value: '`INSERISCI_CODICE`', inline: false }
                         )
-                        .setTimestamp();
+                        .setTimestamp()
+                        .setFooter({ text: 'Firenze RP - Server Status' });
 
-                    await statusChannel.send({ content: '@everyone', embeds: [embedServerOn] });
+                    await statusChannel.send({ content: pingVoters, embeds: [embedServerOn] });
                 }
             }, 60000); 
         }
