@@ -1,13 +1,14 @@
 {
-  "name": "firenze-italy-rp",
+  "name": "bot-firenze",
   "version": "1.0.0",
-  "description": "Bot per RP su Discord",
+  "description": "Bot di gestione per Firenze RP",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.0"
+    "discord.js": "^14.15.1",
+    "dotenv": "^16.4.5"
   },
   "author": "",
   "license": "ISC"
